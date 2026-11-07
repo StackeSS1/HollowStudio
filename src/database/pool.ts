@@ -1,13 +1,23 @@
 import { Pool } from 'pg';
 
+const databaseUrl = process.env.DATABASE_URL;
+
 export const pool = new Pool({
-  host: '127.0.0.1',
-  port: 5432,
-  database: 'hollowstudio',
-  user: process.env.PGUSER,
-  max: 10,
+  ...(databaseUrl
+    ? {
+        connectionString: databaseUrl,
+        ssl: { rejectUnauthorized: false }
+      }
+    : {
+        host: process.env.PGHOST || '127.0.0.1',
+        port: Number(process.env.PGPORT || 5432),
+        database: process.env.PGDATABASE || 'hollowstudio',
+        user: process.env.PGUSER,
+        password: process.env.PGPASSWORD
+      }),
+  max: 5,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000
+  connectionTimeoutMillis: 10000
 });
 
 pool.on('error', (error) => {
@@ -16,7 +26,8 @@ pool.on('error', (error) => {
 
 export async function checkDatabase(): Promise<boolean> {
   try {
-    await pool.query('SELECT NOW()');
+    const result = await pool.query('SELECT NOW()');
+    console.log('[DATABASE] Connected:', result.rows[0].now);
     return true;
   } catch (error) {
     console.error('[DATABASE] Connection failed:', error);
