@@ -7,7 +7,6 @@ import {
 
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 import { HollowCommand } from '../types/command';
 import { handleRobloxInteraction } from '../roblox/interactions';
@@ -16,7 +15,8 @@ import { handleSuggestionInteraction } from '../suggestions/interactions';
 
 export async function loadCommands(client: Client) {
   const commands = new Collection<string, HollowCommand>();
-  const root = path.join(process.cwd(), 'src/commands');
+  const root = path.resolve(__dirname, '../commands');
+  const extension = path.extname(__filename) === '.js' ? '.js' : '.ts';
 
   async function scan(directory: string): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true });
@@ -29,9 +29,9 @@ export async function loadCommands(client: Client) {
         continue;
       }
 
-      if (!entry.name.endsWith('.ts')) continue;
+      if (!entry.name.endsWith(extension)) continue;
 
-      const imported = await import(pathToFileURL(fullPath).href);
+      const imported = await import(fullPath);
       const command = imported.default as HollowCommand;
 
       if (!command?.data || !command?.execute) {
