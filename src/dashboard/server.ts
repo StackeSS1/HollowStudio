@@ -477,7 +477,7 @@ app.get('/api/dashboard/suggestions', requireAuth, async (req, res) => {
        ${where}
        ORDER BY ${orderBy}
        LIMIT ${limit} OFFSET ${offset}`,
-      [ACTIVE_GUILD_ID, ...values]
+      values
     );
 
     res.json({

@@ -391,7 +391,7 @@ app.get('/api/dashboard/suggestions', requireAuth, async (req, res) => {
        ) v ON v.suggestion_id = s.id
        ${where}
        ORDER BY ${orderBy}
-       LIMIT ${limit} OFFSET ${offset}`, [ACTIVE_GUILD_ID, ...values]);
+       LIMIT ${limit} OFFSET ${offset}`, values);
         res.json({
             suggestions: dataResult.rows,
             pagination: {
