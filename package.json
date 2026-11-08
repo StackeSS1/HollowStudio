@@ -11,7 +11,7 @@
     "db:init": "tsx src/database/init.ts",
     "dashboard:api": "tsx watch src/dashboard/server.ts",
     "dashboard:web": "vite --config dashboard/vite.config.ts --host 0.0.0.0",
-    "dashboard": "concurrently -k \"npm:dashboard:api\" \"npm:dashboard:web\""
+    "dashboard": "concurrently -k \"npm:dev\" \"npm:dashboard:web\""
   },
   "keywords": [],
   "author": "",

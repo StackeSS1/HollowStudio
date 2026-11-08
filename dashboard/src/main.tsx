@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+let authToken: string | null = localStorage.getItem('hollow_dashboard_token');
+
 type Suggestion = {
   id: string;
   user_id: string;
@@ -98,11 +101,11 @@ const SETTINGS_NAV = [
 ];
 
 async function api(path: string, options: RequestInit = {}) {
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(`${API_BASE}/api${path}`, {
     ...options,
-    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...options.headers
     }
   });
@@ -120,6 +123,7 @@ function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [pendingDiscordToken, setPendingDiscordToken] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [stats, setStats] = useState<Stats | null>(null);
@@ -151,12 +155,90 @@ function App() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState('');
+  const [activityLogs, setActivityLogs] = useState<Array<{
+    id: string;
+    actor: string;
+    action: string;
+    section: string;
+    old_values: unknown;
+    new_values: unknown;
+    created_at: string;
+  }>>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
 
   useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const discordToken = hash.get('discord_token');
+    const pendingToken = hash.get('discord_pending');
+    const discordError = hash.get('discord_error');
+
+    if (discordToken) {
+      authToken = discordToken;
+      localStorage.setItem('hollow_dashboard_token', discordToken);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      setAuthenticated(true);
+      return;
+    }
+
+    if (pendingToken) {
+      setPendingDiscordToken(pendingToken);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      setAuthenticated(false);
+      return;
+    }
+
+    if (discordError) {
+      setLoginError(discordError);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+
+    if (!authToken) {
+      setAuthenticated(false);
+      return;
+    }
+
     api('/auth/me')
-      .then(data => setAuthenticated(data.authenticated))
-      .catch(() => setAuthenticated(false));
+      .then(data => {
+        if (data.authenticated) {
+          setAuthenticated(true);
+        } else {
+          authToken = null;
+          localStorage.removeItem('hollow_dashboard_token');
+          setAuthenticated(false);
+        }
+      })
+      .catch(() => {
+        authToken = null;
+        localStorage.removeItem('hollow_dashboard_token');
+        setAuthenticated(false);
+      });
   }, []);
+
+  useEffect(() => {
+    if (!authenticated || activePage !== 'logs') return;
+
+    let mounted = true;
+    setActivityLoading(true);
+    setActivityError('');
+
+    api('/dashboard/activity')
+      .then(data => {
+        if (mounted) setActivityLogs(data.logs || []);
+      })
+      .catch(error => {
+        if (mounted) setActivityError(
+          error instanceof Error ? error.message : 'Could not load activity history.'
+        );
+      })
+      .finally(() => {
+        if (mounted) setActivityLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [authenticated, activePage]);
 
   useEffect(() => {
     if (!authenticated || activePage !== 'monitor') return;
@@ -165,8 +247,8 @@ function App() {
 
     const loadMonitor = async () => {
       try {
-        const response = await fetch('/api/dashboard/monitor', {
-          credentials: 'include'
+        const response = await fetch(`${API_BASE}/api/dashboard/monitor`, {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
         });
         const data = await response.json();
 
@@ -202,11 +284,16 @@ function App() {
     setLoginError('');
 
     try {
-      await api('/auth/login', {
+      const result = await api('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ password, pendingToken: pendingDiscordToken })
       });
 
+      if (!result.token) throw new Error('Authentication token missing.');
+
+      authToken = result.token;
+      localStorage.setItem('hollow_dashboard_token', result.token);
+      setPendingDiscordToken('');
       setPassword('');
       setAuthenticated(true);
     } catch (err) {
@@ -217,10 +304,17 @@ function App() {
   }
 
   async function logout() {
-    await api('/auth/logout', { method: 'POST' });
-    setAuthenticated(false);
-    setStats(null);
-    setSuggestions([]);
+    try {
+      await api('/auth/logout', { method: 'POST' });
+    } finally {
+      authToken = null;
+      localStorage.removeItem('hollow_dashboard_token');
+      setPendingDiscordToken('');
+      setAuthenticated(false);
+      setStats(null);
+      setSuggestions([]);
+      setBotSettings({});
+    }
   }
 
   async function loadDashboard() {
@@ -321,22 +415,33 @@ function App() {
           <h1>CONTROL CENTER</h1>
           <p className="muted">Authorized staff access only.</p>
 
-          <label htmlFor="password">ACCESS PASSWORD</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={event => setPassword(event.target.value)}
-            placeholder="Enter dashboard password"
-            autoComplete="current-password"
-            required
-          />
+          <a className="discord-login-button" href={`${API_BASE}/api/auth/discord`}>
+            <span className="discord-symbol">◉</span>
+            LOGIN WITH DISCORD
+          </a>
+
+          {pendingDiscordToken && (
+            <>
+              <p className="muted discord-connected">
+                Discord connected. Enter your dashboard password to authorize this account.
+              </p>
+              <label htmlFor="password">DASHBOARD PASSWORD</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                placeholder="Enter dashboard password"
+                autoComplete="current-password"
+                required
+              />
+              <button className="primary-button" disabled={loading}>
+                {loading ? 'AUTHORIZING...' : 'AUTHORIZE DISCORD ACCOUNT'}
+              </button>
+            </>
+          )}
 
           {loginError && <p className="error-message">{loginError}</p>}
-
-          <button className="primary-button" disabled={loading}>
-            {loading ? 'AUTHENTICATING...' : 'ACCESS DASHBOARD'}
-          </button>
 
           <p className="login-footer">HOLLOW STUDIOS · PRIVATE NETWORK</p>
         </form>
@@ -553,10 +658,44 @@ function App() {
         <section className="settings-page">
           <p className="eyebrow">HOLLOW STUDIOS / AUDIT</p>
           <h1>Activity <span>Logs</span></h1>
-          <div className="settings-card">
-            <h2>Activity logging</h2>
-            <p className="muted">Dashboard configuration changes are saved in PostgreSQL. A full audit history will be added in a later step.</p>
-          </div>
+          <p className="muted">Track dashboard configuration changes and review previous values.</p>
+
+          {activityLoading && <div className="settings-card">Loading activity...</div>}
+          {activityError && <div className="settings-card">{activityError}</div>}
+
+          {!activityLoading && !activityError && activityLogs.length === 0 && (
+            <div className="settings-card">
+              <h2>No activity yet</h2>
+              <p className="muted">Changes made to dashboard settings will appear here.</p>
+            </div>
+          )}
+
+          {activityLogs.map(log => (
+            <div className="settings-card" key={log.id} style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <h2>{log.section.charAt(0).toUpperCase() + log.section.slice(1)} settings updated</h2>
+                  <p className="muted">{log.actor} · {log.action}</p>
+                </div>
+                <p className="muted">{new Date(log.created_at).toLocaleString()}</p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                <div>
+                  <p className="eyebrow">PREVIOUS VALUES</p>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>
+                    {JSON.stringify(log.old_values ?? {}, null, 2)}
+                  </pre>
+                </div>
+                <div>
+                  <p className="eyebrow">NEW VALUES</p>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }}>
+                    {JSON.stringify(log.new_values ?? {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          ))}
         </section>
       )}
 

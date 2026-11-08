@@ -12,6 +12,7 @@ const command_handler_1 = require("./handlers/command-handler");
 const pool_1 = require("./database/pool");
 const logger_1 = require("./utils/logger");
 const service_1 = require("./roblox/service");
+const server_1 = require("./dashboard/server");
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
     logger_1.logger.error('Missing DISCORD_TOKEN in .env');
@@ -178,6 +179,7 @@ client.once(discord_js_1.Events.ClientReady, async (bot) => {
         ? 'PostgreSQL connection established.'
         : 'PostgreSQL is unavailable.');
     logger_1.logger.info('Hollow Studio is operational.');
+    await (0, server_1.startDashboardServer)(client);
     const writeHeartbeat = async () => {
         try {
             await pool_1.pool.query(`

@@ -17,6 +17,7 @@ import { loadCommands } from './handlers/command-handler';
 import { checkDatabase, pool } from './database/pool';
 import { logger } from './utils/logger';
 import { syncRobloxMembers } from './roblox/service';
+import { startDashboardServer } from './dashboard/server';
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -226,6 +227,7 @@ client.once(Events.ClientReady, async bot => {
   );
 
   logger.info('Hollow Studio is operational.');
+  await startDashboardServer(client);
 
   const writeHeartbeat = async () => {
     try {

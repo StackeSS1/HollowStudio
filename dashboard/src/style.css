@@ -1570,3 +1570,37 @@ html {
     animation: none !important;
   }
 }
+
+
+/* Discord OAuth login */
+.discord-login-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 18px;
+  margin: 22px 0 16px;
+  border-radius: 10px;
+  background: #5865F2;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: .06em;
+  transition: filter .2s ease, transform .2s ease;
+}
+
+.discord-login-button:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.discord-symbol {
+  font-size: 20px;
+}
+
+.discord-connected {
+  margin: 8px 0 18px;
+  line-height: 1.5;
+}
